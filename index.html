@@ -1,0 +1,1568 @@
+<!doctype html>
+<html lang="pt-MZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0B5D3B">
+<title>Na Testa — Jogo de Adivinhas</title>
+
+<!--
+  ========================================================================
+  NA TESTA  —  jogo de adivinhas moçambicano (estilo "põe na testa")
+  ------------------------------------------------------------------------
+  • Um único ficheiro: HTML + CSS + JavaScript, tudo aqui dentro.
+  • Abre com duplo-clique / abrir no browser. Não precisa de servidor.
+  • Inclina o telemóvel para BAIXO = Certo, para CIMA = Passar.
+  • Também joga com TOQUE (metade de baixo = Certo, metade de cima = Passar)
+    e com TECLADO (seta para baixo/espaço = Certo, seta para cima = Passar).
+
+  >>> PARA EDITAR AS PALAVRAS: procura mais abaixo, no <script>, o objeto
+      chamado CATEGORIAS, marcado com "==== EDITA AQUI AS PALAVRAS ====".
+  ========================================================================
+-->
+
+<!-- Tipo de letra do título (Anton). É OPCIONAL: se não houver internet, o
+     browser usa o fallback pesado do sistema definido no CSS. Não bloqueia. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet">
+
+<style>
+  /* ============================ PALETA (capulana) ============================ */
+  :root{
+    --verde:      #0B5D3B;  /* verde profundo   */
+    --dourado:    #F4B41A;  /* dourado          */
+    --coral:      #EE5A36;  /* coral / tijolo   */
+    --creme:      #F7EEDD;  /* creme            */
+    --acerto:     #17A66B;  /* verde de acerto  */
+    --escuro:     #0a140f;  /* fundo de jogo    */
+    --escuro-2:   #10261b;  /* fundo do menu    */
+
+    /* Tipos de letra: título forte em maiúsculas + fallback do sistema */
+    --fonte-titulo: 'Anton', 'Arial Black', Impact, 'Haettenschweiler', system-ui, sans-serif;
+    --fonte-corpo:  system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+
+    --raio: 18px;
+  }
+
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body{ height: 100%; margin: 0; }
+
+  body{
+    font-family: var(--fonte-corpo);
+    color: var(--creme);
+    background: var(--escuro-2);
+    overflow: hidden;               /* sem scroll da página */
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+  }
+
+  /* Padrão geométrico tipo capulana (losangos), em baixa opacidade.
+     Feito só com gradientes CSS — não precisa de imagens externas. */
+  .capulana{
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    opacity: 0.10;
+    background-color: transparent;
+    background-image:
+      repeating-linear-gradient( 45deg, var(--dourado) 0 14px, transparent 14px 40px),
+      repeating-linear-gradient(-45deg, var(--coral)   0 14px, transparent 14px 40px),
+      repeating-linear-gradient( 45deg, var(--acerto)  0 3px,  transparent 3px 40px);
+    /* mostra o padrão só nas margens (o centro fica limpo) */
+    -webkit-mask-image: linear-gradient(to right, #000 0 12%, transparent 24% 76%, #000 88% 100%),
+                        linear-gradient(to bottom, #000 0 12%, transparent 24% 76%, #000 88% 100%);
+    -webkit-mask-composite: source-over;
+            mask-image: linear-gradient(to right, #000 0 12%, transparent 24% 76%, #000 88% 100%),
+                        linear-gradient(to bottom, #000 0 12%, transparent 24% 76%, #000 88% 100%);
+  }
+
+  /* ============================ ESTRUTURA DE ECRÃS ============================ */
+  .tela{
+    position: fixed; inset: 0; z-index: 1;
+    display: none;
+    flex-direction: column;
+    padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
+    overflow-y: auto;
+  }
+  .tela.ativa{ display: flex; }
+
+  /* ============================ BOTÕES / CONTROLOS ============================ */
+  button{
+    font-family: var(--fonte-corpo);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--escuro);
+    background: var(--dourado);
+    border: none;
+    border-radius: var(--raio);
+    padding: 16px 22px;
+    cursor: pointer;
+    transition: transform .08s ease, filter .15s ease;
+  }
+  button:active{ transform: scale(.97); }
+  button.secundario{ background: transparent; color: var(--creme); border: 2px solid rgba(247,238,221,.4); }
+  button.coral{ background: var(--coral); color: #fff; }
+
+  /* Foco de teclado bem visível (acessibilidade) */
+  :focus-visible{
+    outline: 3px solid var(--dourado);
+    outline-offset: 3px;
+    border-radius: var(--raio);
+  }
+
+  /* ============================ MENU ============================ */
+  .topo-menu{ display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .marca{ display: flex; flex-direction: column; line-height: .9; }
+  .marca .titulo{
+    font-family: var(--fonte-titulo);
+    font-size: clamp(2.6rem, 12vw, 4.5rem);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--dourado);
+    margin: 0;
+    text-shadow: 3px 3px 0 var(--coral);
+  }
+  .marca .subtitulo{
+    font-size: .95rem; color: var(--creme); opacity: .8; margin-top: 6px; letter-spacing: .5px;
+  }
+  .btn-icone{
+    background: rgba(247,238,221,.08);
+    color: var(--creme);
+    border: 1px solid rgba(247,238,221,.25);
+    width: 52px; height: 52px; padding: 0;
+    border-radius: 50%;
+    font-size: 1.4rem; line-height: 1;
+    flex: 0 0 auto;
+  }
+
+  .instrucao-menu{
+    margin: 18px 2px 6px;
+    font-size: .95rem;
+    color: var(--creme);
+    opacity: .85;
+  }
+
+  .grelha{
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    margin-top: 10px;
+    padding-bottom: 10px;
+  }
+  @media (max-width: 360px){ .grelha{ grid-template-columns: 1fr; } }
+
+  .cartao{
+    background: linear-gradient(160deg, rgba(244,180,26,.16), rgba(238,90,54,.16));
+    border: 1px solid rgba(247,238,221,.18);
+    border-radius: var(--raio);
+    padding: 18px 16px;
+    text-align: left;
+    color: var(--creme);
+    display: flex; flex-direction: column; gap: 6px;
+    min-height: 118px;
+    justify-content: space-between;
+  }
+  /* Cartão especial da Mistura: destaque dourado e ocupa a linha inteira */
+  .cartao-mistura{
+    grid-column: 1 / -1;
+    background: linear-gradient(160deg, rgba(244,180,26,.28), rgba(238,90,54,.22));
+    border: 2px solid var(--dourado);
+    min-height: 96px;
+    flex-direction: row; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .cartao-mistura .emoji{ font-size: 2.4rem; }
+  .cartao-mistura .nome{ color: var(--dourado); }
+  .cartao-mistura .meta{ width: 100%; }
+
+  .cartao .emoji{ font-size: 2.2rem; }
+  .cartao .nome{ font-weight: 800; font-size: 1.12rem; }
+  .cartao .meta{ font-size: .8rem; opacity: .75; }
+  .cartao .melhor{ font-size: .78rem; color: var(--dourado); font-weight: 700; }
+
+  /* ============================ DEFINIÇÕES ============================ */
+  .painel{
+    max-width: 520px; width: 100%; margin: 0 auto;
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .cabecalho{
+    display: flex; align-items: center; gap: 12px; margin-bottom: 6px;
+  }
+  .cabecalho h2{
+    font-family: var(--fonte-titulo);
+    text-transform: uppercase;
+    color: var(--dourado);
+    font-size: 2rem; margin: 0; letter-spacing: 1px;
+  }
+  .grupo-def{
+    background: rgba(247,238,221,.06);
+    border: 1px solid rgba(247,238,221,.14);
+    border-radius: var(--raio);
+    padding: 16px;
+  }
+  .grupo-def > .rotulo{ font-weight: 800; margin-bottom: 12px; display: block; }
+  .segmentos{ display: flex; gap: 10px; }
+  .segmentos button{
+    flex: 1; background: transparent; color: var(--creme);
+    border: 2px solid rgba(247,238,221,.3);
+  }
+  .segmentos button.sel{ background: var(--dourado); color: var(--escuro); border-color: var(--dourado); }
+
+  .linha-switch{ display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  .linha-switch .desc{ font-size: .82rem; opacity: .7; margin-top: 4px; }
+
+  /* Interruptor (switch) acessível */
+  .switch{ position: relative; width: 62px; height: 34px; flex: 0 0 auto; }
+  .switch input{ position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .switch .trilho{
+    position: absolute; inset: 0; background: rgba(247,238,221,.25);
+    border-radius: 999px; transition: background .15s ease;
+  }
+  .switch .bolinha{
+    position: absolute; top: 4px; left: 4px; width: 26px; height: 26px;
+    background: var(--creme); border-radius: 50%; transition: transform .15s ease;
+  }
+  .switch input:checked + .trilho{ background: var(--acerto); }
+  .switch input:checked + .trilho + .bolinha{ transform: translateX(28px); }
+  .switch input:focus-visible + .trilho{ outline: 3px solid var(--dourado); outline-offset: 3px; }
+
+  /* ============================ CONTAGEM ============================ */
+  #tela-contagem{ align-items: center; justify-content: center; text-align: center; background: var(--verde); }
+  #contagem-num{
+    font-family: var(--fonte-titulo);
+    font-size: clamp(6rem, 40vw, 16rem);
+    color: var(--dourado);
+    line-height: 1;
+    text-shadow: 5px 5px 0 var(--coral);
+  }
+  #contagem-txt{ font-size: 1.4rem; font-weight: 800; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
+
+  /* ============================ JOGO ============================ */
+  #tela-jogo{ padding: 0; background: var(--escuro); overflow: hidden; }
+  .barra-topo{
+    position: relative; z-index: 3;
+    padding: max(10px, env(safe-area-inset-top)) 16px 8px;
+  }
+  .barra-fundo{ height: 10px; background: rgba(247,238,221,.18); border-radius: 999px; overflow: hidden; }
+  .barra-cheia{ height: 100%; width: 100%; background: var(--dourado); border-radius: 999px; transition: width .25s linear; }
+  .barra-cheia.aviso{ background: var(--coral); }
+  .segundos{ text-align: center; font-weight: 800; font-size: 1.1rem; margin-top: 6px; color: var(--creme); }
+
+  .palco{
+    position: absolute; inset: 0; z-index: 2;
+    display: flex; align-items: center; justify-content: center;
+    padding: 74px 20px 20px;
+    text-align: center;
+  }
+  #palavra{
+    font-family: var(--fonte-titulo);
+    text-transform: uppercase;
+    color: var(--creme);
+    font-size: clamp(2.4rem, 13vw, 7rem);
+    line-height: 1.02;
+    letter-spacing: 1px;
+    word-break: break-word;
+  }
+
+  /* Zonas de toque (metade de cima = Passar, metade de baixo = Certo) */
+  .zonas{ position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; }
+  .zona{ flex: 1; display: flex; align-items: center; justify-content: center; }
+  .zona .dica{
+    font-weight: 800; font-size: 1rem; letter-spacing: 1px;
+    opacity: .5; text-transform: uppercase;
+  }
+  .zona-cima  { align-items: flex-start; padding-top: 66px; }
+  .zona-cima  .dica{ color: var(--coral); }
+  .zona-baixo { align-items: flex-end; padding-bottom: 26px; }
+  .zona-baixo .dica{ color: var(--acerto); }
+
+  /* Overlay de feedback (CERTO! / PASSAR) — ecrã inteiro */
+  #feedback{
+    position: absolute; inset: 0; z-index: 6;
+    display: none; align-items: center; justify-content: center;
+    font-family: var(--fonte-titulo);
+    text-transform: uppercase;
+    font-size: clamp(3rem, 18vw, 9rem);
+    color: #fff;
+  }
+  #feedback.mostrar{ display: flex; }
+  #feedback.certo{ background: var(--acerto); }
+  #feedback.passar{ background: var(--coral); }
+
+  /* Aviso para virar para landscape (discreto, não bloqueia) */
+  #aviso-rodar{
+    position: absolute; z-index: 5; left: 50%; transform: translateX(-50%);
+    top: 58px; background: rgba(0,0,0,.45); color: var(--creme);
+    padding: 8px 14px; border-radius: 999px; font-size: .8rem; font-weight: 700;
+  }
+  @media (orientation: landscape){ #aviso-rodar{ display: none; } }
+
+  /* ============================ RESULTADO ============================ */
+  #tela-fim{ background: var(--escuro-2); }
+  .placar{
+    text-align: center; margin: 6px 0 14px;
+  }
+  .placar .pts{
+    font-family: var(--fonte-titulo);
+    font-size: clamp(4rem, 22vw, 8rem);
+    color: var(--acerto); line-height: 1;
+  }
+  .placar .rotulo-pts{ font-weight: 800; text-transform: uppercase; letter-spacing: 1px; opacity: .85; }
+  .placar .recorde{ margin-top: 8px; color: var(--dourado); font-weight: 800; }
+
+  .lista-res{
+    list-style: none; padding: 0; margin: 0 auto 16px; max-width: 520px; width: 100%;
+    display: flex; flex-direction: column; gap: 8px;
+    max-height: 42vh; overflow-y: auto;   /* listas longas fazem scroll interno */
+  }
+  .lista-res li{
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(247,238,221,.06);
+    border: 1px solid rgba(247,238,221,.12);
+    border-radius: 12px; padding: 10px 14px;
+    font-weight: 600;
+  }
+  .lista-res li .marca-res{ font-size: 1.15rem; }
+  .lista-res li.passou{ opacity: .65; }
+
+  .botoes-fim{ display: flex; flex-direction: column; gap: 10px; max-width: 520px; width: 100%; margin: 0 auto; }
+
+  /* ============================ ACESSIBILIDADE / MOVIMENTO ============================ */
+  @media (prefers-reduced-motion: reduce){
+    *{ transition: none !important; animation: none !important; }
+  }
+
+  .rodape-menu{ margin-top: auto; padding-top: 14px; text-align: center; font-size: .75rem; opacity: .55; }
+
+  /* ============================ MODO EQUIPAS ============================ */
+  /* Botão de destaque no menu para entrar no modo competição */
+  .btn-equipas{ background: var(--coral); color: #fff; width: 100%; font-size: 1.15rem; margin: 4px 0; }
+  .divisor-menu{ text-align: center; font-size: .8rem; opacity: .6; margin: 12px 0 2px; letter-spacing: .5px; }
+
+  /* Linha de configuração de cada equipa (número + campo de nome) */
+  .linha-equipa{ display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .linha-equipa .num-equipa{
+    flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--dourado); color: var(--escuro); font-weight: 800; font-size: .9rem;
+  }
+  /* Campos de texto precisam de permitir escrita/seleção (o body bloqueia-as) */
+  .input-equipa{
+    flex: 1; font-family: var(--fonte-corpo); font-size: 1rem; font-weight: 600;
+    color: var(--creme); background: rgba(247,238,221,.08);
+    border: 1px solid rgba(247,238,221,.25); border-radius: 12px; padding: 12px 14px;
+    -webkit-user-select: text; user-select: text; touch-action: auto; min-width: 0;
+  }
+  .input-equipa::placeholder{ color: var(--creme); opacity: .5; }
+  .input-equipa:focus-visible{ outline: 3px solid var(--dourado); outline-offset: 2px; }
+  button:disabled{ opacity: .4; cursor: not-allowed; }
+
+  /* Ecrã "vez da equipa" e placares (reaproveitam .painel / .lista-res) */
+  #tela-vez{ align-items: center; justify-content: center; text-align: center; background: var(--verde); }
+  #vez-equipa{
+    font-family: var(--fonte-titulo); text-transform: uppercase;
+    font-size: clamp(2.2rem, 11vw, 4.2rem); color: var(--dourado);
+    line-height: 1; text-shadow: 3px 3px 0 var(--coral); word-break: break-word;
+  }
+
+  /* Linhas de placar: nome à esquerda, pontos à direita */
+  .lista-res li .nome-eq{ flex: 1; text-align: left; }
+  .lista-res li .pts-eq{ font-weight: 800; color: var(--dourado); font-size: 1.1rem; }
+  .lista-res li.vez-atual{ border-color: var(--dourado); background: rgba(244,180,26,.16); }
+  .lista-res li.lider .pts-eq{ color: var(--acerto); }
+  .subtitulo-placar{ text-align: center; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; opacity: .8; margin-bottom: 2px; font-size: .85rem; }
+</style>
+</head>
+<body>
+
+<div class="capulana" aria-hidden="true"></div>
+
+<!-- ======================= ECRÃ 1: MENU ======================= -->
+<main id="tela-menu" class="tela ativa" aria-label="Menu inicial">
+  <div class="topo-menu">
+    <div class="marca">
+      <h1 class="titulo">Na Testa</h1>
+      <span class="subtitulo">Jogo de adivinhas — Moçambique 🇲🇿</span>
+    </div>
+    <button id="btn-definicoes" class="btn-icone" aria-label="Abrir definições" title="Definições">⚙️</button>
+  </div>
+
+  <p class="instrucao-menu">Põe o telemóvel na testa e o grupo dá as pistas!</p>
+
+  <button id="btn-equipas" class="btn-equipas">👥 Jogar em equipas (competição)</button>
+
+  <div class="divisor-menu">— ou joga já (individual) —</div>
+
+  <div id="grelha-categorias" class="grelha" role="list" aria-label="Categorias"></div>
+
+  <div class="rodape-menu">Inclina para baixo = Certo &nbsp;•&nbsp; Inclina para cima = Passar</div>
+</main>
+
+<!-- ======================= ECRÃ 2: DEFINIÇÕES ======================= -->
+<section id="tela-definicoes" class="tela" aria-label="Definições">
+  <div class="painel">
+    <div class="cabecalho">
+      <button id="def-voltar" class="btn-icone" aria-label="Voltar ao menu">←</button>
+      <h2>Definições</h2>
+    </div>
+
+    <div class="grupo-def">
+      <span class="rotulo">Duração da ronda</span>
+      <div class="segmentos" id="seg-duracao" role="group" aria-label="Duração da ronda">
+        <button data-seg="30">30s</button>
+        <button data-seg="60" class="sel">60s</button>
+        <button data-seg="90">90s</button>
+      </div>
+    </div>
+
+    <div class="grupo-def">
+      <div class="linha-switch">
+        <div>
+          <span class="rotulo" style="margin:0">Som</span>
+          <div class="desc">Bip curto ao acertar ou passar.</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="sw-som" checked>
+          <span class="trilho"></span><span class="bolinha"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="grupo-def">
+      <div class="linha-switch">
+        <div>
+          <span class="rotulo" style="margin:0">Inverter controlos</span>
+          <div class="desc">Se o teu telemóvel trocar os movimentos, liga isto.</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="sw-inverter">
+          <span class="trilho"></span><span class="bolinha"></span>
+        </label>
+      </div>
+    </div>
+
+    <button id="def-ok" style="margin-top:6px">Guardar e voltar</button>
+  </div>
+</section>
+
+<!-- ======================= ECRÃ 3: CONTAGEM ======================= -->
+<section id="tela-contagem" class="tela" aria-live="assertive">
+  <div id="contagem-num">3</div>
+  <div id="contagem-txt">Prepara-te…</div>
+</section>
+
+<!-- ======================= ECRÃ 4: JOGO ======================= -->
+<section id="tela-jogo" class="tela" aria-label="Ronda a decorrer">
+  <div class="barra-topo">
+    <div class="barra-fundo"><div id="barra-cheia" class="barra-cheia"></div></div>
+    <div id="segundos" class="segundos">60</div>
+  </div>
+
+  <div class="palco"><div id="palavra">—</div></div>
+
+  <div id="aviso-rodar">Vira o telemóvel de lado 🔄</div>
+
+  <!-- Zonas de toque (sempre funcionam) -->
+  <div class="zonas" aria-hidden="true">
+    <div class="zona zona-cima"  id="zona-passar"><span class="dica">↑ Passar</span></div>
+    <div class="zona zona-baixo" id="zona-certo"><span class="dica">↓ Certo</span></div>
+  </div>
+
+  <div id="feedback"></div>
+</section>
+
+<!-- ======================= ECRÃ 5: RESULTADO ======================= -->
+<section id="tela-fim" class="tela" aria-label="Resultado da ronda">
+  <div class="painel">
+    <div class="cabecalho" style="justify-content:center">
+      <h2 id="fim-titulo">Fim da ronda!</h2>
+    </div>
+
+    <div class="placar">
+      <div class="pts" id="fim-pontos">0</div>
+      <div class="rotulo-pts">acertos</div>
+      <div class="recorde" id="fim-recorde"></div>
+    </div>
+
+    <ul id="fim-lista" class="lista-res"></ul>
+
+    <div class="botoes-fim">
+      <button id="fim-outra">Jogar outra vez</button>
+      <button id="fim-menu" class="secundario">Voltar ao menu</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============= MODO EQUIPAS: CONFIGURAR ============= -->
+<section id="tela-equipas" class="tela" aria-label="Configurar equipas">
+  <div class="painel">
+    <div class="cabecalho">
+      <button id="eq-voltar" class="btn-icone" aria-label="Voltar ao menu">←</button>
+      <h2>Equipas</h2>
+    </div>
+
+    <div class="grupo-def">
+      <span class="rotulo">Nomes das equipas</span>
+      <div id="lista-equipas"></div>
+      <div style="display:flex; gap:10px; margin-top:12px;">
+        <button id="eq-remover" class="secundario" style="flex:1">− Remover</button>
+        <button id="eq-adicionar" style="flex:1">+ Adicionar</button>
+      </div>
+    </div>
+
+    <div class="grupo-def">
+      <span class="rotulo">Número de rondas</span>
+      <div class="segmentos" id="seg-rondas" role="group" aria-label="Número de rondas">
+        <button data-seg="1" class="sel">1</button>
+        <button data-seg="2">2</button>
+        <button data-seg="3">3</button>
+      </div>
+      <div class="desc" style="margin-top:10px">Em cada ronda escolhem uma categoria — todas as equipas jogam a mesma. Os pontos somam-se no fim.</div>
+    </div>
+
+    <button id="eq-comecar">Começar competição</button>
+  </div>
+</section>
+
+<!-- ============= MODO EQUIPAS: ESCOLHER CATEGORIA DA RONDA ============= -->
+<section id="tela-cat-ronda" class="tela" aria-label="Escolher categoria da ronda">
+  <div class="topo-menu">
+    <div class="marca">
+      <h1 class="titulo" style="font-size:clamp(1.9rem,9vw,3.2rem)">Escolham</h1>
+      <span class="subtitulo" id="cat-ronda-sub">Ronda 1 — escolham a categoria</span>
+    </div>
+  </div>
+  <div id="grelha-cat-ronda" class="grelha" role="list" aria-label="Categorias"></div>
+</section>
+
+<!-- ============= MODO EQUIPAS: VEZ DA EQUIPA ============= -->
+<section id="tela-vez" class="tela" aria-label="Vez da equipa">
+  <div class="painel" style="align-items:center">
+    <div id="vez-ronda" class="rotulo-pts" style="opacity:.75; margin-bottom:6px"></div>
+    <div class="rotulo-pts" style="opacity:.7; font-size:.8rem">É a vez de</div>
+    <div id="vez-equipa">Equipa</div>
+    <div class="desc" style="opacity:.9; margin:10px 0 12px">Põe o telemóvel na testa. O resto do grupo dá as pistas!</div>
+    <ul id="vez-placar" class="lista-res" style="margin-bottom:12px"></ul>
+    <button id="vez-comecar" style="width:100%">Começar (põe na testa)</button>
+  </div>
+</section>
+
+<!-- ============= MODO EQUIPAS: FIM DA VEZ (resultado + placar) ============= -->
+<section id="tela-vez-fim" class="tela" aria-label="Resultado da vez">
+  <div class="painel">
+    <div class="placar" style="margin-bottom:6px">
+      <div class="pts" id="vf-pontos">0</div>
+      <div class="rotulo-pts" id="vf-equipa">Equipa</div>
+    </div>
+
+    <div class="subtitulo-placar">Placar da competição</div>
+    <ul id="vf-placar" class="lista-res"></ul>
+
+    <div class="subtitulo-placar">Palavras desta vez</div>
+    <ul id="vf-lista" class="lista-res"></ul>
+
+    <div class="botoes-fim">
+      <button id="vf-continuar">Próxima equipa</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============= MODO EQUIPAS: PLACAR FINAL ============= -->
+<section id="tela-placar" class="tela" aria-label="Placar final">
+  <div class="painel">
+    <div class="cabecalho" style="justify-content:center"><h2>Resultado final</h2></div>
+
+    <div class="placar">
+      <div class="pts" id="pl-vencedor" style="font-size:clamp(2rem,9vw,3.6rem); color:var(--dourado); word-break:break-word">—</div>
+      <div class="rotulo-pts" id="pl-sub"></div>
+    </div>
+
+    <div class="subtitulo-placar">Classificação</div>
+    <ul id="pl-lista" class="lista-res"></ul>
+
+    <div class="botoes-fim">
+      <button id="pl-nova">Nova competição</button>
+      <button id="pl-menu" class="secundario">Voltar ao menu</button>
+    </div>
+  </div>
+</section>
+
+<script>
+"use strict";
+/* ==========================================================================
+   ==== EDITA AQUI AS PALAVRAS ============================================
+   Cada categoria tem: emoji, nome e a lista de palavras.
+   • Para acrescentar palavras, escreve-as entre aspas, separadas por vírgula.
+   • O número de palavras em cada cartão é contado automaticamente.
+   • Mantém o registo moçambicano :)
+   ========================================================================== */
+const CATEGORIAS = [
+  {
+    id: "cultura",
+    emoji: "🎶",
+    nome: "Cultura & Música",
+    palavras: [
+      "Marrabenta","Timbila","Ilha de Moçambique","Capulana","Xigubo","Pandza",
+      "Wazimbo","Lizha James","Mr. Bow","Ziqo","Neyma","MC Roger","Mia Couto",
+      "Paulina Chiziane","José Craveirinha","Samora Machel","Eduardo Mondlane",
+      "Graça Machel","Metical","Gorongosa","Cahora Bassa","Monte Binga",
+      "Rio Zambeze","Maputo","Beira","Nampula","Pemba","Inhambane","Tofo",
+      "Bazaruto","Quelimane","Xai-Xai",
+      "Stewart Sukuma","Fany Pfumo","Ghorwane","Dilon Djindji","Eyuphuro","Mabulu",
+      "340ml","Moreira Chonguiça","Dama do Bling","Denny OG","Twenty Fingers",
+      "Marllen","Hernâni","Laylizzy","Duas Caras","Kelly","Nícia","Batuque","Tufo",
+      "Mapiko","Makwaela","Nyanga","Marimba","Tambor","Kizomba","Afro house",
+      "Passada","Rap","Hip-hop","Reggae","Coro","Ungulani Ba Ka Khosa",
+      "Noémia de Sousa","Luís Bernardo Honwana","Suleiman Cassamo",
+      "Marcelino dos Santos","Rui Knopfli","Josina Machel","Joaquim Chissano",
+      "Armando Guebuza","Filipe Nyusi","Ngungunhane","Mueda","Frelimo",
+      "Independência","Bandeira","Emblema","Hino Nacional","Tete","Chimoio",
+      "Lichinga","Nacala","Vilankulo","Angoche","Mocímboa da Praia","Catembe",
+      "Matola","Marracuene","Manica","Sofala","Zambézia","Niassa","Cabo Delgado",
+      "Gaza","Ilha da Inhaca","Ponta do Ouro","Lago Niassa","Rio Limpopo","Rio Save",
+      "Rio Lúrio","Reserva do Niassa","Parque da Gorongosa","Quirimbas","Fortaleza",
+      "Catedral","Praça da Independência","Polana","Artesanato","Pau-preto",
+      "Makonde","Chopi","Changana","Macua","Sena","Ronga","Bitonga","Nyungwe",
+      "Poesia","Conto","Museu","Estátua"
+    ]
+  },
+  {
+    id: "comida",
+    emoji: "🍲",
+    nome: "Comida & Bebida",
+    palavras: [
+      "Matapa","Xima","Frango à zambeziana","Caril de caranguejo","Camarão grelhado",
+      "Arroz de coco","Pãozinho","Chamuça","Badjia","Rissol","Piri-piri","Caju",
+      "Amendoim","Manga","Ananás","Papaia","Coco","Mandioca","Batata-doce",
+      "Peixe seco","Espetada","Prego","Cerveja 2M","Sumo de tamarindo","Gelado",
+      "Bolo","Feijoada","Mucapata",
+      "Matata","Tihove","Ncima","Kakana","Mukheka","Caril de amendoim",
+      "Caril de galinha","Caril de peixe","Feijão nhemba","Couve","Pepino",
+      "Folha de abóbora","Abóbora","Milho","Farinha de milho","Arroz","Feijão",
+      "Grão","Chá","Café","Leite","Ovo","Pão","Queijo","Manteiga","Açúcar","Sal",
+      "Óleo","Limão","Laranja","Tangerina","Banana","Maçã","Melancia","Melão",
+      "Maracujá","Goiaba","Abacate","Jaca","Ata","Cana-de-açúcar","Massala","Canhu",
+      "Mafurra","Tomate","Cebola","Alho","Gengibre","Coentro","Malagueta","Pimenta",
+      "Lagosta","Caranguejo","Lulas","Polvo","Carapau","Pescada","Corvina","Galinha",
+      "Cabrito","Carne de vaca","Carne de porco","Salsicha","Chouriço","Fiambre",
+      "Omelete","Batata frita","Salada","Caldo","Sopa","Canja","Guisado","Assado",
+      "Cozido","Doce de coco","Biscoito","Rebuçado","Chocolate","Refresco","Sumo",
+      "Água","Cerveja Laurentina","Cerveja Manica","Vinho","Água de coco","Tontonto",
+      "Sura","Uputsu","Chá de limão","Iogurte","Bolacha","Farinha de mandioca",
+      "Mel","Castanha"
+    ]
+  },
+  {
+    id: "futebol",
+    emoji: "⚽",
+    nome: "Futebol",
+    palavras: [
+      "Golo","Guarda-redes","Penálti","Cartão vermelho","Livre","Pontapé de canto",
+      "Fora de jogo","Árbitro","Baliza","Camisola","Chuteira","Selecção","Mambas",
+      "Eusébio","Cristiano Ronaldo","Messi","Estádio do Zimpeto","Adepto","Bola",
+      "Defesa","Avançado","Médio","Treinador","Apito","Bisar","Hat-trick",
+      "Marcador","Empate",
+      "Cartão amarelo","Grande penalidade","Pontapé de baliza","Lançamento","Falta",
+      "Canto","Meio-campo","Área","Relvado","Balneário","Suplente","Titular",
+      "Capitão","Braçadeira","Bandeirinha","VAR","Grande área","Pequena área",
+      "Barreira","Cabeceamento","Remate","Passe","Cruzamento","Drible","Finta",
+      "Desarme","Interceção","Corte","Grande defesa","Autogolo","Golo de cabeça",
+      "Bicicleta","Chapéu","Túnel","Poste","Trave","Rede","Golo anulado",
+      "Prolongamento","Vitória","Derrota","Campeão","Taça","Troféu","Medalha","Liga",
+      "Moçambola","Costa do Sol","Ferroviário de Maputo","Ferroviário da Beira",
+      "Black Bulls","Textáfrica","Desportivo de Maputo","Maxaquene","CAN","Mundial",
+      "Champions","Benfica","Sporting","Porto","Barcelona","Real Madrid",
+      "Manchester United","Neymar","Mbappé","Pelé","Maradona","Reinildo","Tico-Tico",
+      "Estádio da Machava","Claque","Simulação","Compensação","Intervalo",
+      "Primeira parte","Segunda parte","Aquecimento","Táctica","Contra-ataque",
+      "Posse de bola","Pressão","Marcação","Grito de golo","Camisola número dez",
+      "Golo de calcanhar","Guarda-linhas","Substituição","Lesão","Massagista",
+      "Bola parada","Meia-final","Final","Grupo","Eliminatória","Classificação",
+      "Pontos","Golo fantasma"
+    ]
+  },
+  {
+    id: "animais",
+    emoji: "🦁",
+    nome: "Animais",
+    palavras: [
+      "Leão","Elefante","Girafa","Crocodilo","Hipopótamo","Zebra","Rinoceronte",
+      "Macaco","Cobra","Tartaruga","Golfinho","Tubarão","Águia","Coruja",
+      "Camaleão","Formiga","Abelha","Borboleta","Cabrito","Galinha","Pato",
+      "Baleia","Leopardo","Búfalo","Gazela","Escorpião","Aranha","Papagaio","Flamingo",
+      "Chita","Hiena","Chacal","Mangusto","Suricata","Javali","Facóquero",
+      "Porco-espinho","Morcego","Rato","Esquilo","Coelho","Lebre","Impala","Kudu",
+      "Gnu","Antílope","Nyala","Vaca","Boi","Touro","Bezerro","Cabra","Bode","Ovelha",
+      "Carneiro","Porco","Cão","Gato","Cavalo","Burro","Camelo","Pomba","Galo","Peru",
+      "Ganso","Avestruz","Pavão","Grou","Garça","Cegonha","Pelicano","Abutre","Falcão",
+      "Milhafre","Andorinha","Pardal","Corvo","Beija-flor","Tucano","Arara","Periquito",
+      "Pica-pau","Calau","Lagarto","Iguana","Salamandra","Sapo","Rã","Píton","Mamba",
+      "Naja","Víbora","Jacaré","Sardinha","Atum","Bacalhau","Salmão","Enguia","Raia",
+      "Peixe-espada","Garoupa","Robalo","Camarão","Lagosta","Caranguejo","Polvo","Lula",
+      "Estrela-do-mar","Cavalo-marinho","Água-viva","Foca","Lontra","Dugongo","Orca",
+      "Cachalote","Mosca","Mosquito","Barata","Gafanhoto","Grilo","Louva-a-deus",
+      "Joaninha","Libélula","Vespa","Cupim","Centopeia","Minhoca","Caracol","Lesma",
+      "Pulga","Carraça","Lagarta","Escaravelho","Pirilampo","Babuíno","Chimpanzé",
+      "Gorila","Preguiça","Canguru","Coala","Panda","Urso","Lobo","Tigre","Onça","Puma"
+    ]
+  },
+  {
+    id: "diadia",
+    emoji: "🏠",
+    nome: "Dia-a-dia",
+    palavras: [
+      "Chapa","Machimbombo","Telemóvel","Capulana","Esteira","Balde","Pilão",
+      "Fogão","Panela","Vassoura","Enxada","Bicicleta","Óculos","Relógio","Chave",
+      "Guarda-chuva","Sandálias","Mochila","Caderno","Caneta","Lâmpada","Ventoinha",
+      "Frigorífico","Colchão","Candeeiro","Cadeira","Copo","Prato",
+      "Mesa","Cama","Almofada","Lençol","Cobertor","Toalha","Sabão",
+      "Escova de dentes","Pasta de dentes","Pente","Espelho","Tesoura","Faca","Garfo",
+      "Colher","Tigela","Caneca","Chaleira","Bacia","Bidão","Carvão","Fósforos",
+      "Isqueiro","Vela","Lanterna","Rádio","Televisão","Comando","Carregador","Tomada",
+      "Extensão","Gerador","Painel solar","Pilha","Ferro de engomar","Máquina de costura",
+      "Agulha","Linha","Botão","Corda","Rede mosquiteira","Cortina","Tapete","Cesto",
+      "Saco","Mala","Carteira","Cinto","Chapéu","Boné","Camisa","T-shirt","Calça",
+      "Calção","Vestido","Saia","Blusa","Casaco","Meias","Sapatos","Chinelos","Ténis",
+      "Botas","Armário","Prateleira","Gaveta","Porta","Janela","Telhado","Parede",
+      "Quintal","Portão","Muro","Poço","Torneira","Mangueira","Regador","Catana",
+      "Machado","Martelo","Prego","Chave de fendas","Alicate","Serrote","Tijolo",
+      "Cimento","Areia","Tinta","Pincel","Escada","Carrinho de mão","Carroça","Carro",
+      "Motorizada","Táxi","Camião","Comboio","Barco","Canoa","Avião","Estrada","Ponte",
+      "Semáforo","Poste","Papel","Livro","Régua","Borracha","Lápis","Cola",
+      "Calculadora","Computador","Teclado","Impressora","Quadro","Giz","Uniforme",
+      "Vela de aniversário","Guardanapo","Panela de barro","Peneira"
+    ]
+  },
+  {
+    id: "filmes",
+    emoji: "🎬",
+    nome: "Filmes & Diversão",
+    palavras: [
+      "Novela","Cinema","Netflix","Homem-Aranha","Batman","Titanic","Rei Leão",
+      "Frozen","Vingadores","Harry Potter","Velocidade Furiosa","Pantera Negra",
+      "Super-Homem","Tom e Jerry","Bob Esponja","Pipoca","Comédia","Terror",
+      "Ator","Realizador","Banda sonora","Dança","Música","Concerto","Palco",
+      "Star Wars","Senhor dos Anéis","Piratas das Caraíbas","Jurassic Park","Rocky",
+      "Rambo","Matrix","Avatar","Gladiador","Homem de Ferro","Capitão América","Hulk",
+      "Thor","Viúva Negra","Homem-Formiga","Guardiões da Galáxia","Deadpool","Wolverine",
+      "X-Men","Mulher-Maravilha","Aquaman","Flash","Coringa","Madagáscar","Shrek",
+      "Kung Fu Panda","Toy Story","Carros","Procurando Nemo","Up","Ratatui",
+      "Os Incríveis","Divertida Mente","Coco","Moana","Encanto","Aladino","Cinderela",
+      "Branca de Neve","Pinóquio","Dumbo","Bambi","Mogli","Tarzan","Mulan","Zootrópolis",
+      "Minions","A Era do Gelo","Rio","Sonic","Pokémon","Dragon Ball","Naruto","Ben 10",
+      "Scooby-Doo","Pica-Pau","Popeye","Mickey Mouse","Pato Donald","Pernalonga",
+      "O Padrinho","Game of Thrones","La Casa de Papel","Round 6","Stranger Things",
+      "Wandinha","Breaking Bad","Big Brother","The Voice","Got Talent","Reality show",
+      "Série","Documentário","Ação","Aventura","Romance","Suspense","Drama",
+      "Ficção científica","Desenho animado","Animação","Legendas","Dobragem","Estreia",
+      "Trailer","Bilheteira","Sessão","Ecrã","Karaoke","Matiné","Discoteca","DJ",
+      "Festa","Baile","Coreografia","Microfone","Guitarra","Piano","Bateria","Violino",
+      "Saxofone","Flauta","Trompete","Podcast","Consola","PlayStation","Comediante",
+      "Palhaço","Circo","Teatro","Peça","Aplauso","Camarim","Óscar","Prémio",
+      "Tapete vermelho","Selfie","Câmara"
+    ]
+  }
+];
+/* ==== FIM DA ZONA DE EDIÇÃO DE PALAVRAS ==== */
+
+
+/* ==========================================================================
+   MISTURA — junta as palavras de TODAS as categorias (sem repetir) para o
+   modo "aleatório de categorias diferentes". Como o baralho é depois
+   baralhado, cada palavra que sai é (ao acaso) de uma categoria qualquer.
+   ========================================================================== */
+function _normalizar(s){
+  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+}
+
+/** Devolve todas as palavras do jogo, sem duplicados (ex.: "Capulana"). */
+function palavrasMistura(){
+  const vistas = new Set();
+  const todas = [];
+  CATEGORIAS.forEach(cat => cat.palavras.forEach(p => {
+    const chave = _normalizar(p);
+    if(!vistas.has(chave)){ vistas.add(chave); todas.push(p); }
+  }));
+  return todas;
+}
+
+/** "Categoria" especial da mistura. 'palavras' é calculado on-the-fly. */
+const CATEGORIA_MISTURA = {
+  id: "mistura",
+  emoji: "🎲",
+  nome: "Mistura",
+  get palavras(){ return palavrasMistura(); }
+};
+
+/** Lista de cartões a mostrar: a Mistura primeiro, depois as categorias. */
+function categoriasParaMostrar(){
+  return [CATEGORIA_MISTURA].concat(CATEGORIAS);
+}
+
+
+/* ==========================================================================
+   ESTADO GLOBAL DO JOGO (tudo em memória — nada é gravado no disco)
+   ========================================================================== */
+const estado = {
+  definicoes: {
+    duracao: 60,        // segundos por ronda
+    som: true,          // bip ligado?
+    inverter: false     // inverter controlos de inclinação?
+  },
+  categoriaAtual: null, // objeto de CATEGORIAS
+  baralho: [],          // palavras baralhadas desta ronda
+  indice: 0,            // qual palavra está no ecrã
+  resultados: [],       // [{palavra, acertou:bool}]
+  tempoRestante: 0,     // segundos
+  aDecorrer: false,     // ronda ativa?
+  bloqueado: false,     // durante o feedback de 700ms, ignora novas ações
+  melhores: {}          // melhor pontuação por id de categoria (só nesta sessão)
+};
+
+/* Estado do MODO EQUIPAS (competição). Tudo em memória.
+   Uma competição = várias rondas; cada ronda tem UMA categoria que todas as
+   equipas jogam à vez. Os pontos acumulam-se ao longo das rondas. */
+const partida = {
+  ativa: false,          // estamos numa competição de equipas?
+  equipas: [],           // [{ nome, pontos }]  (pontos = total acumulado)
+  numRondas: 1,          // quantas rondas tem a competição
+  rondaAtual: 0,         // ronda em curso (0-based)
+  equipaAtual: 0,        // equipa a jogar nesta ronda (0-based)
+  categoriaRonda: null   // categoria escolhida para a ronda atual
+};
+
+let intervaloCrono = null;   // setInterval do cronómetro
+let wakeLock = null;         // wakeLock do ecrã (se existir)
+let audioCtx = null;         // Web Audio (criado no gesto do utilizador)
+
+
+/* ==========================================================================
+   ATALHOS DE SELEÇÃO
+   ========================================================================== */
+const $  = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+const telas = {
+  menu:       $("#tela-menu"),
+  definicoes: $("#tela-definicoes"),
+  contagem:   $("#tela-contagem"),
+  jogo:       $("#tela-jogo"),
+  fim:        $("#tela-fim"),
+  // Ecrãs do modo equipas
+  equipas:    $("#tela-equipas"),
+  catRonda:   $("#tela-cat-ronda"),
+  vez:        $("#tela-vez"),
+  vezFim:     $("#tela-vez-fim"),
+  placar:     $("#tela-placar")
+};
+
+/** Mostra apenas a tela indicada. */
+function mostrarTela(nome){
+  Object.values(telas).forEach(t => t.classList.remove("ativa"));
+  telas[nome].classList.add("ativa");
+}
+
+
+/* ==========================================================================
+   CARTÕES DE CATEGORIA — função reutilizável
+   Usada no menu (jogo individual) e na escolha da categoria de cada ronda
+   do modo equipas. 'aoEscolher(cat)' decide o que acontece ao tocar.
+   ========================================================================== */
+function renderCartoesCategoria(container, aoEscolher, mostrarMelhor){
+  container.innerHTML = "";
+  categoriasParaMostrar().forEach(cat => {
+    const ehMistura = (cat.id === "mistura");
+    const btn = document.createElement("button");
+    btn.className = "cartao" + (ehMistura ? " cartao-mistura" : "");
+    btn.setAttribute("role", "listitem");
+    btn.setAttribute("aria-label", cat.nome + ", " + cat.palavras.length + " palavras");
+
+    const melhor = estado.melhores[cat.id];
+    const linhaMelhor = (mostrarMelhor && melhor != null)
+      ? `<span class="melhor">🏆 Melhor: ${melhor}</span>`
+      : "";
+
+    // A Mistura mostra que junta tudo; as outras mostram só o nº de palavras.
+    const meta = ehMistura
+      ? `Todas as categorias • ${cat.palavras.length} palavras`
+      : `${cat.palavras.length} palavras`;
+
+    btn.innerHTML = `
+      <span class="emoji">${cat.emoji}</span>
+      <span class="nome">${cat.nome}</span>
+      <span class="meta">${meta}</span>
+      ${linhaMelhor}
+    `;
+    btn.addEventListener("click", () => aoEscolher(cat));
+    container.appendChild(btn);
+  });
+}
+
+/** Constrói o menu individual (cartões que arrancam uma ronda solo). */
+function construirMenu(){
+  renderCartoesCategoria($("#grelha-categorias"), iniciarRonda, true);
+}
+
+
+/* ==========================================================================
+   DEFINIÇÕES
+   ========================================================================== */
+function ligarDefinicoes(){
+  $("#btn-definicoes").addEventListener("click", () => mostrarTela("definicoes"));
+  $("#def-voltar").addEventListener("click", () => mostrarTela("menu"));
+  $("#def-ok").addEventListener("click", () => mostrarTela("menu"));
+
+  // Duração (segmentos 30/60/90)
+  $$("#seg-duracao button").forEach(b => {
+    b.addEventListener("click", () => {
+      $$("#seg-duracao button").forEach(x => x.classList.remove("sel"));
+      b.classList.add("sel");
+      estado.definicoes.duracao = parseInt(b.dataset.seg, 10);
+    });
+  });
+
+  // Som
+  $("#sw-som").addEventListener("change", (e) => {
+    estado.definicoes.som = e.target.checked;
+  });
+
+  // Inverter controlos
+  $("#sw-inverter").addEventListener("change", (e) => {
+    estado.definicoes.inverter = e.target.checked;
+  });
+}
+
+
+/* ==========================================================================
+   SOM (Web Audio) — bip curto. O AudioContext é criado no primeiro toque
+   do utilizador (regra dos browsers), na função pedirSensoresEComecar().
+   ========================================================================== */
+function garantirAudio(){
+  if(audioCtx) return;
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(AC) audioCtx = new AC();
+  }catch(e){ audioCtx = null; }
+}
+
+function bip(tipo){
+  if(!estado.definicoes.som || !audioCtx) return;
+  try{
+    if(audioCtx.state === "suspended") audioCtx.resume();
+    const osc = audioCtx.createOscillator();
+    const gan = audioCtx.createGain();
+    // Certo: som agudo alegre; Passar: som grave
+    osc.type = "square";
+    osc.frequency.value = (tipo === "certo") ? 880 : 220;
+    gan.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    gan.gain.exponentialRampToValueAtTime(0.25, audioCtx.currentTime + 0.01);
+    gan.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.18);
+    osc.connect(gan); gan.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.2);
+  }catch(e){ /* ignora — som é opcional */ }
+}
+
+
+/* ==========================================================================
+   WAKE LOCK — manter o ecrã aceso durante a ronda (se o browser suportar)
+   ========================================================================== */
+async function pedirWakeLock(){
+  try{
+    if("wakeLock" in navigator){
+      wakeLock = await navigator.wakeLock.request("screen");
+    }
+  }catch(e){ wakeLock = null; }
+}
+async function libertarWakeLock(){
+  try{ if(wakeLock){ await wakeLock.release(); wakeLock = null; } }catch(e){}
+}
+// Se o utilizador voltar ao separador durante a ronda, re-adquire o wake lock.
+document.addEventListener("visibilitychange", () => {
+  if(document.visibilityState === "visible" && estado.aDecorrer){ pedirWakeLock(); }
+});
+
+
+/* ==========================================================================
+   BARALHAR (Fisher–Yates) — não repete palavras dentro da ronda
+   ========================================================================== */
+function baralhar(lista){
+  const a = lista.slice();
+  for(let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+
+/* ==========================================================================
+   FLUXO DA RONDA
+   ========================================================================== */
+
+/** Chamado ao tocar num cartão de categoria. */
+function iniciarRonda(categoria){
+  estado.categoriaAtual = categoria;
+  estado.baralho = baralhar(categoria.palavras);
+  estado.indice = 0;
+  estado.resultados = [];
+  estado.tempoRestante = estado.definicoes.duracao;
+
+  // Pede permissão de sensores (iOS) e liga o áudio — precisa do gesto do toque.
+  pedirSensoresEComecar();
+}
+
+/**
+ * Em iOS 13+ é preciso pedir permissão para os sensores a partir de um toque.
+ * Aqui também "acordamos" o áudio. Depois começa a contagem 3-2-1.
+ */
+function pedirSensoresEComecar(){
+  garantirAudio();
+
+  const precisaPermissao =
+    typeof DeviceOrientationEvent !== "undefined" &&
+    typeof DeviceOrientationEvent.requestPermission === "function";
+
+  if(precisaPermissao){
+    DeviceOrientationEvent.requestPermission()
+      .then(resp => {
+        if(resp === "granted") ligarSensor();
+      })
+      .catch(() => { /* segue mesmo sem sensor — há toque e teclado */ })
+      .finally(() => comecarContagem());
+  }else{
+    // Android e outros: liga o sensor diretamente (sem pedir permissão).
+    ligarSensor();
+    comecarContagem();
+  }
+}
+
+/** Contagem "3… 2… 1… Põe na testa!" antes de cada ronda. */
+function comecarContagem(){
+  mostrarTela("contagem");
+  const num = $("#contagem-num");
+  const txt = $("#contagem-txt");
+  const passos = ["3", "2", "1", "Põe na testa!"];
+  let i = 0;
+
+  txt.textContent = "Prepara-te…";
+  num.textContent = passos[i];
+
+  const t = setInterval(() => {
+    i++;
+    if(i < passos.length){
+      num.textContent = passos[i];
+      if(i === passos.length - 1){ num.textContent = "🙆"; txt.textContent = passos[i]; }
+      bip("certo");
+    }else{
+      clearInterval(t);
+      arrancarJogo();
+    }
+  }, 800);
+}
+
+/** Prepara e arranca a fase de jogo. */
+function arrancarJogo(){
+  estado.aDecorrer = true;
+  estado.tempoRestante = estado.definicoes.duracao;
+  mostrarTela("jogo");
+  pedirWakeLock();
+
+  atualizarCrono();
+  intervaloCrono = setInterval(() => {
+    estado.tempoRestante--;
+    atualizarCrono();
+    if(estado.tempoRestante <= 0){ terminarRonda(); }
+  }, 1000);
+
+  mostrarPalavraAtual();
+}
+
+/** Atualiza a barra de tempo e os segundos. */
+function atualizarCrono(){
+  const total = estado.definicoes.duracao;
+  const frac = Math.max(0, estado.tempoRestante) / total;
+  const barra = $("#barra-cheia");
+  barra.style.width = (frac * 100) + "%";
+  barra.classList.toggle("aviso", estado.tempoRestante <= 10);
+  $("#segundos").textContent = Math.max(0, estado.tempoRestante);
+}
+
+/** Mostra a palavra atual e (re)arma a deteção de inclinação. */
+function mostrarPalavraAtual(){
+  if(estado.indice >= estado.baralho.length){
+    if(partida.ativa){
+      // Modo equipas: rebaralha para a equipa ter o tempo todo (evita repetir a última).
+      const ultima = estado.baralho[estado.baralho.length - 1];
+      const novo = baralhar(estado.categoriaAtual.palavras);
+      if(novo[0] === ultima && novo.length > 1){ [novo[0], novo[1]] = [novo[1], novo[0]]; }
+      estado.baralho = novo;
+      estado.indice = 0;
+    }else{
+      // Modo individual: acabaram as palavras -> termina a ronda.
+      terminarRonda();
+      return;
+    }
+  }
+  $("#palavra").textContent = estado.baralho[estado.indice];
+  estado.bloqueado = false;
+  rearmarInclinacao();   // guarda nova referência neutra após ~350ms
+}
+
+/**
+ * Regista o resultado (acertou ou passou), mostra o feedback de ecrã inteiro,
+ * e avança para a palavra seguinte.
+ */
+function registar(acertou){
+  if(!estado.aDecorrer || estado.bloqueado) return;
+  estado.bloqueado = true;
+
+  estado.resultados.push({
+    palavra: estado.baralho[estado.indice],
+    acertou: acertou
+  });
+  estado.indice++;
+
+  mostrarFeedback(acertou);
+
+  // Vibração (se existir)
+  if(navigator.vibrate){
+    try{ navigator.vibrate(acertou ? 80 : [40, 40, 40]); }catch(e){}
+  }
+  bip(acertou ? "certo" : "passar");
+
+  // Após ~700ms, esconde o feedback e mostra a próxima palavra.
+  setTimeout(() => {
+    esconderFeedback();
+    if(estado.aDecorrer) mostrarPalavraAtual();
+  }, 700);
+}
+
+/** Overlay verde "CERTO!" ou coral "PASSAR". */
+function mostrarFeedback(acertou){
+  const fb = $("#feedback");
+  fb.textContent = acertou ? "CERTO!" : "PASSAR";
+  fb.className = "mostrar " + (acertou ? "certo" : "passar");
+}
+function esconderFeedback(){
+  $("#feedback").className = "";
+}
+
+/** Fim da ronda: pára tudo e mostra o resultado. */
+function terminarRonda(){
+  if(!estado.aDecorrer) return;
+  estado.aDecorrer = false;
+
+  clearInterval(intervaloCrono);
+  intervaloCrono = null;
+  desligarSensor();
+  libertarWakeLock();
+  esconderFeedback();
+
+  // Modo equipas -> resultado da vez; senão -> resultado individual.
+  if(partida.ativa){ terminarVezEquipa(); }
+  else { mostrarResultado(); }
+}
+
+
+/* ==========================================================================
+   ECRÃ DE RESULTADO
+   ========================================================================== */
+function mostrarResultado(){
+  const acertos = estado.resultados.filter(r => r.acertou).length;
+  $("#fim-pontos").textContent = acertos;
+
+  // Melhor pontuação por categoria (só nesta sessão, em memória)
+  const cat = estado.categoriaAtual;
+  const anterior = estado.melhores[cat.id];
+  const recordeEl = $("#fim-recorde");
+  if(anterior == null || acertos > anterior){
+    estado.melhores[cat.id] = acertos;
+    recordeEl.textContent = "🎉 Novo recorde nesta categoria!";
+  }else{
+    recordeEl.textContent = "🏆 Melhor nesta sessão: " + estado.melhores[cat.id];
+  }
+
+  // Lista de palavras com resultado (✅ Certo / ⏭️ Passou)
+  preencherPalavras($("#fim-lista"), estado.resultados);
+
+  mostrarTela("fim");
+}
+
+/** Preenche uma <ul> com a lista de palavras jogadas (✅/⏭️). Reutilizável. */
+function preencherPalavras(ul, resultados){
+  ul.innerHTML = "";
+  if(resultados.length === 0){
+    const li = document.createElement("li");
+    li.textContent = "Não deu tempo para nenhuma palavra 😅";
+    ul.appendChild(li);
+    return;
+  }
+  resultados.forEach(r => {
+    const li = document.createElement("li");
+    if(!r.acertou) li.classList.add("passou");
+    li.innerHTML = `<span class="marca-res">${r.acertou ? "✅" : "⏭️"}</span>
+                    <span>${r.palavra}</span>`;
+    ul.appendChild(li);
+  });
+}
+
+
+/* ==========================================================================
+   MECÂNICA DE INCLINAÇÃO (deviceorientation)
+   --------------------------------------------------------------------------
+   • Ao mostrar cada palavra, esperamos ~350ms de "assentamento" e guardamos a
+     orientação atual como referência (posição neutra na testa).
+   • Calculamos o delta de beta e gamma vs. referência, normalizados p/ -180..180.
+   • Usamos o eixo com MAIOR variação absoluta (adapta-se à forma de segurar).
+   • A carta só "arma" quando volta perto do neutro (|delta| < 15°). Estando
+     armada, se |delta| passar ~35° dispara Certo (baixo) ou Passar (cima).
+   • Depois de disparar tem de voltar ao neutro para armar a carta seguinte.
+   ========================================================================== */
+const LIMIAR_ARMAR   = 15;   // graus — perto do neutro para "armar"
+const LIMIAR_DISPARO = 35;   // graus — variação para disparar a ação
+const TEMPO_ASSENTAR = 350;  // ms — tempo até fixar a referência neutra
+
+const incl = {
+  ligado: false,
+  temReferencia: false,
+  refBeta: 0,
+  refGamma: 0,
+  armada: false,          // pronta a disparar?
+  timerAssentar: null
+};
+
+/** Normaliza um ângulo para o intervalo -180..180. */
+function normDelta(d){
+  while(d > 180)  d -= 360;
+  while(d < -180) d += 360;
+  return d;
+}
+
+/** Liga o listener de orientação (chamado após permissão/gesto). */
+function ligarSensor(){
+  if(incl.ligado) return;
+  if(typeof window.DeviceOrientationEvent === "undefined") return;
+  window.addEventListener("deviceorientation", aoOrientar, true);
+  incl.ligado = true;
+}
+function desligarSensor(){
+  if(!incl.ligado) return;
+  window.removeEventListener("deviceorientation", aoOrientar, true);
+  incl.ligado = false;
+  incl.temReferencia = false;
+  incl.armada = false;
+  if(incl.timerAssentar){ clearTimeout(incl.timerAssentar); incl.timerAssentar = null; }
+}
+
+/** Guarda uma nova referência neutra após o tempo de assentamento. */
+function rearmarInclinacao(){
+  incl.temReferencia = false;
+  incl.armada = false;
+  if(incl.timerAssentar) clearTimeout(incl.timerAssentar);
+  // Marca para capturar a próxima leitura como referência (após TEMPO_ASSENTAR).
+  incl.timerAssentar = setTimeout(() => {
+    incl.aCapturar = true;
+  }, TEMPO_ASSENTAR);
+}
+
+/** Handler do evento deviceorientation. */
+function aoOrientar(ev){
+  if(!estado.aDecorrer) return;
+  if(ev.beta == null || ev.gamma == null) return;
+
+  // Captura a referência neutra (uma vez, após o assentamento).
+  if(incl.aCapturar){
+    incl.refBeta = ev.beta;
+    incl.refGamma = ev.gamma;
+    incl.temReferencia = true;
+    incl.armada = false;
+    incl.aCapturar = false;
+    return;
+  }
+  if(!incl.temReferencia || estado.bloqueado) return;
+
+  // Delta em relação ao neutro, normalizado para -180..180.
+  const dBeta  = normDelta(ev.beta  - incl.refBeta);
+  const dGamma = normDelta(ev.gamma - incl.refGamma);
+
+  // Escolhe o eixo com maior variação absoluta (adapta-se a cada pessoa).
+  const usarBeta = Math.abs(dBeta) >= Math.abs(dGamma);
+  const delta = usarBeta ? dBeta : dGamma;
+  const mag = Math.abs(delta);
+
+  // Arma quando estamos perto do neutro.
+  if(mag < LIMIAR_ARMAR){ incl.armada = true; return; }
+
+  // Dispara quando armada e passamos o limiar.
+  if(incl.armada && mag > LIMIAR_DISPARO){
+    incl.armada = false;
+    // Sinal positivo do delta = inclinar para baixo (por defeito, Certo).
+    let paraBaixo = delta > 0;
+    if(estado.definicoes.inverter) paraBaixo = !paraBaixo;
+    registar(paraBaixo);   // baixo = Certo ; cima = Passar
+  }
+}
+
+
+/* ==========================================================================
+   CONTROLOS ALTERNATIVOS (funcionam SEMPRE)
+   ========================================================================== */
+
+// 1) TOQUE: metade de baixo = Certo, metade de cima = Passar
+$("#zona-certo").addEventListener("click", () => registar(true));
+$("#zona-passar").addEventListener("click", () => registar(false));
+
+// 2) TECLADO (útil para testar no computador)
+document.addEventListener("keydown", (e) => {
+  if(!estado.aDecorrer) return;
+  if(e.code === "ArrowDown" || e.code === "Space"){
+    e.preventDefault();
+    registar(true);           // Certo
+  }else if(e.code === "ArrowUp"){
+    e.preventDefault();
+    registar(false);          // Passar
+  }
+});
+
+
+/* ==========================================================================
+   BOTÕES DO ECRÃ DE FIM (individual)
+   ========================================================================== */
+$("#fim-outra").addEventListener("click", () => {
+  // Nova ronda da mesma categoria (rebaralha).
+  iniciarRonda(estado.categoriaAtual);
+});
+$("#fim-menu").addEventListener("click", () => {
+  construirMenu();      // atualiza os "melhores" nos cartões
+  mostrarTela("menu");
+});
+
+
+/* ==========================================================================
+   ==================  MODO EQUIPAS (COMPETIÇÃO)  ==========================
+   Fluxo:
+     Menu -> Configurar equipas -> [para cada ronda: escolher categoria ->
+     cada equipa joga a sua vez] -> Placar final.
+   ========================================================================== */
+const MIN_EQUIPAS = 2;
+const MAX_EQUIPAS = 6;
+
+// Nomes escritos pelo utilizador (persistem enquanto configura). Começa com 2.
+let nomesTemp = ["", ""];
+
+/** Desenha os campos de nome das equipas no ecrã de configuração. */
+function renderListaEquipas(){
+  const cont = $("#lista-equipas");
+  cont.innerHTML = "";
+  nomesTemp.forEach((nome, i) => {
+    const linha = document.createElement("div");
+    linha.className = "linha-equipa";
+
+    const num = document.createElement("span");
+    num.className = "num-equipa";
+    num.textContent = (i + 1);
+
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.className = "input-equipa";
+    inp.placeholder = "Equipa " + (i + 1);
+    inp.value = nome;
+    inp.maxLength = 20;
+    inp.setAttribute("aria-label", "Nome da equipa " + (i + 1));
+    inp.addEventListener("input", () => { nomesTemp[i] = inp.value; });
+
+    linha.appendChild(num);
+    linha.appendChild(inp);
+    cont.appendChild(linha);
+  });
+  // Ativa/desativa os botões conforme os limites
+  $("#eq-remover").disabled  = nomesTemp.length <= MIN_EQUIPAS;
+  $("#eq-adicionar").disabled = nomesTemp.length >= MAX_EQUIPAS;
+}
+
+/** Liga os controlos do ecrã de configuração de equipas. */
+function ligarEquipas(){
+  // Abrir configuração a partir do menu
+  $("#btn-equipas").addEventListener("click", () => {
+    renderListaEquipas();
+    mostrarTela("equipas");
+  });
+  $("#eq-voltar").addEventListener("click", () => mostrarTela("menu"));
+
+  // Adicionar / remover equipas
+  $("#eq-adicionar").addEventListener("click", () => {
+    if(nomesTemp.length < MAX_EQUIPAS){ nomesTemp.push(""); renderListaEquipas(); }
+  });
+  $("#eq-remover").addEventListener("click", () => {
+    if(nomesTemp.length > MIN_EQUIPAS){ nomesTemp.pop(); renderListaEquipas(); }
+  });
+
+  // Número de rondas (1/2/3)
+  $$("#seg-rondas button").forEach(b => {
+    b.addEventListener("click", () => {
+      $$("#seg-rondas button").forEach(x => x.classList.remove("sel"));
+      b.classList.add("sel");
+      partida.numRondas = parseInt(b.dataset.seg, 10);
+    });
+  });
+
+  // Começar a competição
+  $("#eq-comecar").addEventListener("click", iniciarPartida);
+
+  // Botão "Começar (põe na testa)" de cada vez de equipa
+  $("#vez-comecar").addEventListener("click", comecarVezEquipa);
+
+  // Avançar depois de cada vez (próxima equipa / próxima ronda / ver vencedor)
+  $("#vf-continuar").addEventListener("click", avancarCompeticao);
+
+  // Botões do placar final
+  $("#pl-nova").addEventListener("click", () => {
+    // Nova competição — mantém os nomes já escritos.
+    renderListaEquipas();
+    mostrarTela("equipas");
+  });
+  $("#pl-menu").addEventListener("click", () => {
+    partida.ativa = false;
+    construirMenu();
+    mostrarTela("menu");
+  });
+}
+
+/** Arranca a competição: cria as equipas com pontos a zero. */
+function iniciarPartida(){
+  partida.ativa = true;
+  partida.equipas = nomesTemp.map((n, i) => ({
+    nome: (n && n.trim()) ? n.trim() : ("Equipa " + (i + 1)),
+    pontos: 0
+  }));
+  partida.rondaAtual = 0;
+  iniciarRondaEquipas();
+}
+
+/** Início de uma ronda: escolher a categoria (a mesma para todas as equipas). */
+function iniciarRondaEquipas(){
+  partida.equipaAtual = 0;
+  $("#cat-ronda-sub").textContent =
+    "Ronda " + (partida.rondaAtual + 1) + " de " + partida.numRondas + " — escolham a categoria";
+  renderCartoesCategoria($("#grelha-cat-ronda"), escolherCategoriaRonda, false);
+  mostrarTela("catRonda");
+}
+
+/** Categoria escolhida para a ronda -> arranca a vez da 1ª equipa. */
+function escolherCategoriaRonda(cat){
+  partida.categoriaRonda = cat;
+  iniciarVezEquipa();
+}
+
+/** Ecrã "é a vez de EQUIPA X" com o placar atual. */
+function iniciarVezEquipa(){
+  const eq = partida.equipas[partida.equipaAtual];
+  const c = partida.categoriaRonda;
+  $("#vez-ronda").textContent =
+    "Ronda " + (partida.rondaAtual + 1) + " de " + partida.numRondas + " • " + c.emoji + " " + c.nome;
+  $("#vez-equipa").textContent = eq.nome;
+  renderPlacar($("#vez-placar"), partida.equipaAtual);  // destaca quem vai jogar
+  mostrarTela("vez");
+}
+
+/** Toque em "Começar" -> prepara o baralho e arranca (pede sensores/áudio). */
+function comecarVezEquipa(){
+  estado.categoriaAtual = partida.categoriaRonda;
+  estado.baralho = baralhar(partida.categoriaRonda.palavras);
+  estado.indice = 0;
+  estado.resultados = [];
+  estado.tempoRestante = estado.definicoes.duracao;
+  pedirSensoresEComecar();   // gesto do utilizador -> permissão iOS + áudio -> contagem -> jogo
+}
+
+/** Fim do tempo de uma equipa: soma pontos e mostra resultado + placar. */
+function terminarVezEquipa(){
+  const acertos = estado.resultados.filter(r => r.acertou).length;
+  const eq = partida.equipas[partida.equipaAtual];
+  eq.pontos += acertos;
+
+  $("#vf-pontos").textContent = acertos;
+  $("#vf-equipa").textContent =
+    eq.nome + " — " + acertos + (acertos === 1 ? " acerto nesta vez" : " acertos nesta vez");
+
+  renderPlacar($("#vf-placar"), -1);                 // placar acumulado
+  preencherPalavras($("#vf-lista"), estado.resultados);
+
+  // Texto do botão consoante o que vem a seguir
+  const btn = $("#vf-continuar");
+  const ultimaEquipa = partida.equipaAtual >= partida.equipas.length - 1;
+  const ultimaRonda  = partida.rondaAtual  >= partida.numRondas - 1;
+  if(ultimaEquipa && ultimaRonda)      btn.textContent = "Ver vencedor 🏆";
+  else if(ultimaEquipa)                btn.textContent = "Próxima ronda ▶";
+  else                                 btn.textContent = "Próxima equipa ▶";
+
+  mostrarTela("vezFim");
+}
+
+/** Avança: próxima equipa, ou próxima ronda, ou placar final. */
+function avancarCompeticao(){
+  const ultimaEquipa = partida.equipaAtual >= partida.equipas.length - 1;
+  if(!ultimaEquipa){
+    partida.equipaAtual++;
+    iniciarVezEquipa();
+    return;
+  }
+  // Ronda terminada (todas as equipas jogaram).
+  if(partida.rondaAtual >= partida.numRondas - 1){
+    mostrarPlacarFinal();
+  }else{
+    partida.rondaAtual++;
+    iniciarRondaEquipas();   // escolher nova categoria
+  }
+}
+
+/** Desenha um placar de equipas (ordenado por pontos). idxDestaque destaca a vez. */
+function renderPlacar(ul, idxDestaque){
+  ul.innerHTML = "";
+  const maxPts = Math.max(0, ...partida.equipas.map(e => e.pontos));
+  // Ordena por pontos (desc) sem perder o índice original.
+  const ordenadas = partida.equipas
+    .map((e, i) => ({ e, i }))
+    .sort((a, b) => b.e.pontos - a.e.pontos);
+
+  ordenadas.forEach(({ e, i }) => {
+    const li = document.createElement("li");
+    if(i === idxDestaque) li.classList.add("vez-atual");
+    if(maxPts > 0 && e.pontos === maxPts) li.classList.add("lider");
+    li.innerHTML = `<span class="nome-eq">${e.nome}</span><span class="pts-eq">${e.pontos}</span>`;
+    ul.appendChild(li);
+  });
+}
+
+/** Placar final: destaca o vencedor (ou empate) e fecha a competição. */
+function mostrarPlacarFinal(){
+  const maxPts = Math.max(...partida.equipas.map(e => e.pontos));
+  const vencedores = partida.equipas.filter(e => e.pontos === maxPts);
+
+  const pl = $("#pl-vencedor");
+  const sub = $("#pl-sub");
+  if(vencedores.length === 1){
+    pl.textContent = "🏆 " + vencedores[0].nome;
+    sub.textContent = maxPts + (maxPts === 1 ? " acerto" : " acertos");
+  }else{
+    pl.textContent = "Empate!";
+    sub.textContent = vencedores.map(e => e.nome).join(" • ") + " — " + maxPts + " acertos";
+  }
+
+  renderPlacar($("#pl-lista"), -1);
+  partida.ativa = false;   // competição terminada
+  mostrarTela("placar");
+}
+
+
+/* ==========================================================================
+   ARRANQUE
+   ========================================================================== */
+construirMenu();
+ligarDefinicoes();
+ligarEquipas();
+mostrarTela("menu");
+</script>
+</body>
+</html>
