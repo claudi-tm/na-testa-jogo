@@ -297,6 +297,26 @@
   }
   @media (orientation: landscape){ #aviso-rodar{ display: none; } }
 
+  /* Porta de entrada: pede para rodar o telemóvel (só aparece quando mostrar) */
+  #overlay-rodar{
+    position: fixed; inset: 0; z-index: 20;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; text-align: center; padding: 28px;
+    background: var(--verde); color: var(--creme);
+  }
+  #overlay-rodar.mostrar{ display: flex; }
+  #overlay-rodar .rodar-icone{ font-size: 4.5rem; animation: girarDica 2s ease-in-out infinite; }
+  #overlay-rodar .rodar-titulo{
+    font-family: var(--fonte-titulo); text-transform: uppercase;
+    font-size: clamp(1.8rem, 9vw, 3rem); color: var(--dourado); letter-spacing: 1px;
+  }
+  #overlay-rodar .rodar-sub{ font-size: 1rem; opacity: .9; max-width: 340px; }
+  #overlay-rodar button{ margin-top: 10px; }
+  @keyframes girarDica{
+    0%,100%{ transform: rotate(-12deg); } 50%{ transform: rotate(78deg); }
+  }
+  @media (prefers-reduced-motion: reduce){ #overlay-rodar .rodar-icone{ animation: none; } }
+
   /* ============================ RESULTADO ============================ */
   #tela-fim{ background: var(--escuro-2); }
   .placar{
@@ -376,6 +396,14 @@
 <body>
 
 <div class="capulana" aria-hidden="true"></div>
+
+<!-- Aviso para rodar o telemóvel (aparece antes da contagem, se estiver na vertical) -->
+<div id="overlay-rodar" aria-live="assertive">
+  <div class="rodar-icone">🔄</div>
+  <div class="rodar-titulo">Roda o telemóvel</div>
+  <div class="rodar-sub">Põe o telemóvel na horizontal (deitado) para jogar.</div>
+  <button id="rodar-escape" class="secundario">Jogar na vertical mesmo assim</button>
+</div>
 
 <!-- ======================= ECRÃ 1: MENU ======================= -->
 <main id="tela-menu" class="tela ativa" aria-label="Menu inicial">
@@ -1024,17 +1052,55 @@ function pedirSensoresEComecar(){
     typeof DeviceOrientationEvent.requestPermission === "function";
 
   if(precisaPermissao){
+    // A permissão TEM de ser pedida aqui, dentro do toque (o iOS exige o gesto).
     DeviceOrientationEvent.requestPermission()
       .then(resp => {
         if(resp === "granted") ligarSensor();
       })
       .catch(() => { /* segue mesmo sem sensor — há toque e teclado */ })
-      .finally(() => comecarContagem());
+      .finally(() => esperarHorizontal(comecarContagem));
   }else{
     // Android e outros: liga o sensor diretamente (sem pedir permissão).
     ligarSensor();
-    comecarContagem();
+    esperarHorizontal(comecarContagem);
   }
+}
+
+/* ==========================================================================
+   PORTA DE ENTRADA — só começar com o telemóvel na horizontal
+   (com escape para quem tem a rotação bloqueada, p. ex. iPhone)
+   ========================================================================== */
+let overrideVertical = false;   // utilizador escolheu jogar na vertical mesmo assim
+
+/** Verdadeiro se o ecrã está na horizontal (mais largo do que alto). */
+function estaHorizontal(){
+  return window.innerWidth > window.innerHeight;
+}
+
+/**
+ * Chama 'callback' quando estivermos na horizontal. Se já estiver (ou o
+ * utilizador tiver escolhido jogar na vertical), chama já. Caso contrário,
+ * mostra o aviso e espera pela rotação.
+ */
+function esperarHorizontal(callback){
+  if(estaHorizontal() || overrideVertical){ callback(); return; }
+
+  const overlay = $("#overlay-rodar");
+  overlay.classList.add("mostrar");
+
+  function verificar(){
+    if(estaHorizontal() || overrideVertical){
+      window.removeEventListener("resize", verificar);
+      window.removeEventListener("orientationchange", verificar);
+      overlay.classList.remove("mostrar");
+      callback();
+    }
+  }
+  window.addEventListener("resize", verificar);
+  window.addEventListener("orientationchange", verificar);
+
+  // Botão de escape: jogar na vertical mesmo assim.
+  $("#rodar-escape").onclick = () => { overrideVertical = true; verificar(); };
 }
 
 /** Contagem "3… 2… 1… Põe na testa!" antes de cada ronda. */
@@ -1211,13 +1277,16 @@ function preencherPalavras(ul, resultados){
 /* ==========================================================================
    MECÂNICA DE INCLINAÇÃO (deviceorientation)
    --------------------------------------------------------------------------
-   • Ao mostrar cada palavra, esperamos ~350ms de "assentamento" e guardamos a
-     orientação atual como referência (posição neutra na testa).
-   • Calculamos o delta de beta e gamma vs. referência, normalizados p/ -180..180.
-   • Usamos o eixo com MAIOR variação absoluta (adapta-se à forma de segurar).
-   • A carta só "arma" quando volta perto do neutro (|delta| < 15°). Estando
-     armada, se |delta| passar ~35° dispara Certo (baixo) ou Passar (cima).
-   • Depois de disparar tem de voltar ao neutro para armar a carta seguinte.
+   Em vez de olhar para 'beta' ou 'gamma' à parte (que dão saltos de 180° quando
+   o telemóvel está em pé na testa — a "singularidade"), calculamos a ELEVAÇÃO do
+   ecrã: para onde a parte da frente do telemóvel aponta, na vertical.
+     elev = asin( cos(beta) · cos(gamma) )  em graus
+   • É contínua (sem saltos) e NÃO depende do lado em que seguras o telemóvel.
+   • Neutro na testa ≈ 0°. Ecrã a virar-se para o CHÃO (nod para baixo) → elev
+     negativo → CERTO. Ecrã a virar-se para o TETO (para cima) → elev positivo → PASSAR.
+   • Ao mostrar cada palavra esperamos ~350ms e guardamos a elevação atual como
+     referência. A carta só "arma" quando |delta| < 15°; estando armada, |delta| > 35°
+     dispara. Depois tem de voltar ao neutro para armar a carta seguinte.
    ========================================================================== */
 const LIMIAR_ARMAR   = 15;   // graus — perto do neutro para "armar"
 const LIMIAR_DISPARO = 35;   // graus — variação para disparar a ação
@@ -1226,17 +1295,19 @@ const TEMPO_ASSENTAR = 350;  // ms — tempo até fixar a referência neutra
 const incl = {
   ligado: false,
   temReferencia: false,
-  refBeta: 0,
-  refGamma: 0,
+  refElev: 0,             // elevação (graus) da posição neutra na testa
   armada: false,          // pronta a disparar?
   timerAssentar: null
 };
 
-/** Normaliza um ângulo para o intervalo -180..180. */
-function normDelta(d){
-  while(d > 180)  d -= 360;
-  while(d < -180) d += 360;
-  return d;
+/** Elevação do ecrã em graus (-90..90), contínua mesmo com o telemóvel em pé. */
+function elevacao(beta, gamma){
+  const b = beta  * Math.PI / 180;
+  const g = gamma * Math.PI / 180;
+  let v = Math.cos(b) * Math.cos(g);
+  if(v >  1) v =  1;      // segurança contra arredondamentos
+  if(v < -1) v = -1;
+  return Math.asin(v) * 180 / Math.PI;
 }
 
 /** Liga o listener de orientação (chamado após permissão/gesto). */
@@ -1271,10 +1342,11 @@ function aoOrientar(ev){
   if(!estado.aDecorrer) return;
   if(ev.beta == null || ev.gamma == null) return;
 
+  const elev = elevacao(ev.beta, ev.gamma);
+
   // Captura a referência neutra (uma vez, após o assentamento).
   if(incl.aCapturar){
-    incl.refBeta = ev.beta;
-    incl.refGamma = ev.gamma;
+    incl.refElev = elev;
     incl.temReferencia = true;
     incl.armada = false;
     incl.aCapturar = false;
@@ -1282,13 +1354,8 @@ function aoOrientar(ev){
   }
   if(!incl.temReferencia || estado.bloqueado) return;
 
-  // Delta em relação ao neutro, normalizado para -180..180.
-  const dBeta  = normDelta(ev.beta  - incl.refBeta);
-  const dGamma = normDelta(ev.gamma - incl.refGamma);
-
-  // Escolhe o eixo com maior variação absoluta (adapta-se a cada pessoa).
-  const usarBeta = Math.abs(dBeta) >= Math.abs(dGamma);
-  const delta = usarBeta ? dBeta : dGamma;
+  // Variação da elevação em relação ao neutro.
+  const delta = elev - incl.refElev;
   const mag = Math.abs(delta);
 
   // Arma quando estamos perto do neutro.
@@ -1297,8 +1364,8 @@ function aoOrientar(ev){
   // Dispara quando armada e passamos o limiar.
   if(incl.armada && mag > LIMIAR_DISPARO){
     incl.armada = false;
-    // Sinal positivo do delta = inclinar para baixo (por defeito, Certo).
-    let paraBaixo = delta > 0;
+    // Elevação a descer (delta < 0) = ecrã vira-se para o chão = inclinar para baixo = Certo.
+    let paraBaixo = delta < 0;
     if(estado.definicoes.inverter) paraBaixo = !paraBaixo;
     registar(paraBaixo);   // baixo = Certo ; cima = Passar
   }
