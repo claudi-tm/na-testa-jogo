@@ -1083,6 +1083,7 @@ function estaHorizontal(){
  * mostra o aviso e espera pela rotação.
  */
 function esperarHorizontal(callback){
+  overrideVertical = false;   // cada arranque (individual ou de equipa) reavalia a orientação
   if(estaHorizontal() || overrideVertical){ callback(); return; }
 
   const overlay = $("#overlay-rodar");
